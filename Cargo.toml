@@ -5,3 +5,4 @@ authors = ["esposm03 <36164633+esposm03@users.noreply.github.com>"]
 edition = "2018"
 
 [dependencies]
+digits_iterator = "0.1.0"
