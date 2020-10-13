@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
-use std::io::stdin;
 use digits_iterator::DigitsExtension;
+use std::io::stdin;
 
 pub struct Program {
     memory: Vec<isize>,
@@ -9,7 +9,6 @@ pub struct Program {
 }
 
 impl Program {
-
     /// Load a program from its string representation
     pub fn load(input: &str) -> Self {
         let memory = input
@@ -20,13 +19,15 @@ impl Program {
             .collect();
         let instruction_pointer = 0usize;
 
-        Program { memory, instruction_pointer }
+        Program {
+            memory,
+            instruction_pointer,
+        }
     }
 
     /// Execute the programs without pauses, until it halts
     pub fn execute(&mut self) {
         while let Some(()) = self.step() {}
-        println!("Program halted, memory dump: {:?}", self.memory);
     }
 
     /// Execute a single instruction and update the instruction pointer
@@ -41,8 +42,12 @@ impl Program {
             (2, m) => self.op_mul(m),
             (3, _) => self.op_input(),
             (4, m) => self.op_output(m[0]),
+            (5, m) => self.op_jump_if_true(m),
+            (6, m) => self.op_jump_if_false(m),
+            (7, m) => self.op_less_than(m),
+            (8, m) => self.op_equals(m),
             (99, _) => return None,
-            _ => unreachable!(),
+            (i, m) => unreachable!("Unsupported instruction: {} (mode {:?})", i, m.mode),
         }
 
         Some(())
@@ -81,12 +86,56 @@ impl Program {
         self.instruction_pointer += 2;
     }
 
+    /// Modify the instruction pointer if the condition is true (opcode `5`)
+    fn op_jump_if_true(&mut self, mode: Mode) {
+        if self.read_mode(1, mode[0]) != 0 {
+            assert!(self.read_mode(2, mode[1]) >= 0, "Negative instruction");
+            self.instruction_pointer = self.read_mode(2, mode[1]) as usize;
+        } else {
+            self.instruction_pointer += 3
+        }
+    }
+
+    /// Modify the instruction pointer if the condition is false (opcode `6`)
+    fn op_jump_if_false(&mut self, mode: Mode) {
+        if self.read_mode(1, mode[0]) == 0 {
+            assert!(self.read_mode(2, mode[1]) >= 0, "Negative instruction");
+            self.instruction_pointer = self.read_mode(2, mode[1]) as usize;
+        } else {
+            self.instruction_pointer += 3
+        }
+    }
+
+    /// Compare the first two parameters, and set the third to 1 or 0 depending
+    /// on their comparison (opcode `7`)
+    fn op_less_than(&mut self, mode: Mode) {
+        if self.read_mode(1, mode[0]) < self.read_mode(2, mode[1]) {
+            self.write(1, 3);
+        } else {
+            self.write(0, 3);
+        }
+
+        self.instruction_pointer += 4;
+    }
+
+    /// Compare the first two parameters, and set the third to 1 or 0 if they
+    /// are equals (opcode `8`)
+    fn op_equals(&mut self, mode: Mode) {
+        if self.read_mode(1, mode[0]) == self.read_mode(2, mode[1]) {
+            self.write(1, 3);
+        } else {
+            self.write(0, 3);
+        }
+
+        self.instruction_pointer += 4;
+    }
+
     /// Return the value that the parameter
     /// at the specified offset references.
     /// The parameter is assumed to have mode
     /// 0 (position mode)
     fn read(&self, offset: usize) -> isize {
-        let pointer = self.memory[self.instruction_pointer+offset];
+        let pointer = self.memory[self.instruction_pointer + offset];
         assert!(pointer >= 0);
 
         self.memory[pointer as usize]
@@ -107,12 +156,11 @@ impl Program {
     /// This parameter is assumed to be at mode 0
     /// (position mode)
     fn write(&mut self, value: isize, offset: usize) {
-        let pointer = self.memory[self.instruction_pointer+offset];
+        let pointer = self.memory[self.instruction_pointer + offset];
         assert!(pointer >= 0);
 
         self.memory[pointer as usize] = value;
     }
-
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -139,7 +187,12 @@ impl Mode {
             .map(|(_, k)| k as usize)
             .collect();
 
-        (opcode % 100, Mode {mode: digits.iter().rev().copied().collect()})
+        (
+            opcode % 100,
+            Mode {
+                mode: digits.iter().rev().copied().collect(),
+            },
+        )
     }
 
     fn get(&self, index: usize) -> usize {
@@ -157,19 +210,33 @@ impl std::ops::Index<usize> for Mode {
 
 #[cfg(test)]
 mod test {
-    use super::Mode;
+    use super::{Mode, Program};
+
+    fn basic_template(input: &str) -> Vec<isize> {
+        let mut program = Program::load(input);
+        program.execute();
+
+        program.memory
+    }
 
     #[test]
     fn test() {
+        assert_eq!(Mode::parse_opcode(1002), (02, Mode { mode: vec![0, 1] }));
+
+        assert_eq!(Mode::parse_opcode(225), (25, Mode { mode: vec![2] }))
+    }
+
+    /// This test only uses basic instructions, it
+    /// is specified in Day 1 - Part 1
+    #[test]
+    fn test_basic() {
         assert_eq!(
-            Mode::parse_opcode(1002),
-            (02, Mode {mode: vec![0, 1]})
+            basic_template("1,9,10,3,2,3,11,0,99,30,40,50"),
+            vec![3500, 9, 10, 70, 2, 3, 11, 0, 99, 30, 40, 50]
         );
 
-        assert_eq!(
-            Mode::parse_opcode(225),
-            (25, Mode {mode: vec![2]})
-        )
+        assert_eq!(basic_template("1,0,0,0,99"), vec![2, 0, 0, 0, 99],);
+
+        assert_eq!(basic_template("2,3,0,3,99"), vec![2, 3, 0, 6, 99],);
     }
 }
-
