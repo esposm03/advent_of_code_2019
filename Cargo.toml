@@ -6,3 +6,4 @@ edition = "2018"
 
 [dependencies]
 digits_iterator = "0.1.0"
+itertools = "0.9.0"

@@ -1,17 +1,20 @@
 #![allow(dead_code)]
 
 use digits_iterator::DigitsExtension;
-use std::io::stdin;
+//use std::io::stdin;
 
-pub struct Program {
+pub struct Program<I: Iterator<Item = isize>> {
     memory: Vec<isize>,
     instruction_pointer: usize,
+
+    input: I,
+    output: Vec<isize>,
 }
 
-impl Program {
+impl<I: Iterator<Item = isize>> Program<I> {
     /// Load a program from its string representation
-    pub fn load(input: &str) -> Self {
-        let memory = input
+    pub fn load(program: &str, input: I) -> Self {
+        let memory = program
             .split(',')
             .filter(|i| *i != "\n")
             .map(|i| i.replace("\n", ""))
@@ -22,16 +25,23 @@ impl Program {
         Program {
             memory,
             instruction_pointer,
+            input,
+            output: vec![],
         }
+    }
+
+    /// Retrieve the outputs this program did during its execution
+    pub fn outputs(&self) -> &[isize] {
+        &self.output
     }
 
     /// Execute the programs without pauses, until it halts
     pub fn execute(&mut self) {
-        while let Some(()) = self.step() {}
+        while self.step() {}
     }
 
     /// Execute a single instruction and update the instruction pointer
-    fn step(&mut self) -> Option<()> {
+    fn step(&mut self) -> bool {
         let mem = &self.memory;
         let ins_ptr = self.instruction_pointer;
         let operation = *mem.get(ins_ptr).unwrap();
@@ -46,11 +56,11 @@ impl Program {
             (6, m) => self.op_jump_if_false(m),
             (7, m) => self.op_less_than(m),
             (8, m) => self.op_equals(m),
-            (99, _) => return None,
+            (99, _) => return false,
             (i, m) => unreachable!("Unsupported instruction: {} (mode {:?})", i, m.mode),
         }
 
-        Some(())
+        true
     }
 
     /// Perform an addition (opcode `1`)
@@ -71,18 +81,15 @@ impl Program {
 
     /// Request an input from the user (opcode `3`)
     fn op_input(&mut self) {
-        let mut raw_input = String::new();
-        stdin().read_line(&mut raw_input).unwrap();
-        let input = raw_input.trim_end();
+        let input = self.input.next().expect("Input stream finished");
 
-        self.write(input.parse::<isize>().unwrap(), 1);
+        self.write(input, 1);
         self.instruction_pointer += 2;
     }
 
     /// Provide an output to the user (opcode `4`)
     fn op_output(&mut self, mode: usize) {
-        println!("{}", self.read_mode(1, mode));
-
+        self.output.push(self.read_mode(1, mode));
         self.instruction_pointer += 2;
     }
 
@@ -185,14 +192,13 @@ impl Mode {
             .enumerate()
             .filter(|(i, _)| *i < digits_count)
             .map(|(_, k)| k as usize)
+            .collect::<Vec<_>>()
+            .iter()
+            .rev()
+            .copied()
             .collect();
 
-        (
-            opcode % 100,
-            Mode {
-                mode: digits.iter().rev().copied().collect(),
-            },
-        )
+        (opcode % 100, Mode { mode: digits })
     }
 
     fn get(&self, index: usize) -> usize {
@@ -213,7 +219,7 @@ mod test {
     use super::{Mode, Program};
 
     fn basic_template(input: &str) -> Vec<isize> {
-        let mut program = Program::load(input);
+        let mut program = Program::load(input, vec![].iter().copied());
         program.execute();
 
         program.memory
