@@ -219,7 +219,7 @@ mod test {
     use super::{Mode, Program};
 
     fn basic_template(input: &str) -> Vec<isize> {
-        let mut program = Program::load(input, vec![].iter().copied());
+        let mut program = Program::load(input, std::iter::empty());
         program.execute();
 
         program.memory
